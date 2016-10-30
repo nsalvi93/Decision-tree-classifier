@@ -94,16 +94,12 @@ public class DecisionTrees
 	public static void main(String[] args) 
 	{
 		DecisionTrees tree = new DecisionTrees();
-		String filename = args[0];								// getting train_data filename
-		tree.depth = Integer.parseInt(args[2]);					// getting depth
-		List<String> recordList = tree.readFile(filename);
-		if(filename.equals("owndataset.txt"))
-		{
-			tree.create_featurelist_owndataset(recordList, tree.dataLists);
-		}
-		else tree.createFeatureList(recordList, tree.dataLists);
+		tree.depth = 6;												// getting depth
+		List<String> recordList = tree.readFile("monk1.txt");
+		
+		tree.createFeatureList(recordList, tree.dataLists);
 		tree.buildTree();											// builds decision tree on training data
-		tree.testdata_traversal(args[1]);									// tests on test data
+		tree.testdata_traversal("monk1test.txt");					// tests on test data
 		tree.print_decision_tree(tree.rootNode);					// prints the decision tree. Comment if not needed
 	}
 	/* Function to construct tree */
