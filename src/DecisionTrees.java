@@ -35,6 +35,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Queue;
+import java.util.Random;
 import java.util.Set;
 import java.util.Stack;
 import java.util.stream.Collector;
@@ -86,39 +87,165 @@ class Node
 public class DecisionTrees 
 {
 	public Node rootNode = null;
-	List<ArrayList<Integer>> dataLists = new ArrayList<ArrayList<Integer>>(); 		
-	List<ArrayList<Integer>> testDataLists = new ArrayList<ArrayList<Integer>>();
-	List<Integer> featureQueue = new LinkedList<>();		// total no. features in dataset
-	static Entropy entropyUtility = new Entropy();			// global object of Entropy class to calculate gain and entropy
-	int depth;											// global variable for depth
+	List<ArrayList<Integer>> dataLists = new ArrayList<ArrayList<Integer>>();		// for capturing data set
+	List<ArrayList<Integer>> resultLists = new ArrayList<ArrayList<Integer>>();		// for capturing results
+	List<ArrayList<Integer>> testDataLists = new ArrayList<ArrayList<Integer>>();	// for capturing test data set
+	List<Integer> featureQueue = new ArrayList<>();									// total no. features in dataset
+	
+	List<Double> weightList = new ArrayList<>();									// weight list for boosting
+	
+	static Entropy entropyUtility = new Entropy();									// global object of Entropy class to calculate gain and entropy
+	int depth;																		// global variable for depth
+	String method;
+	
 	public static void main(String[] args) 
 	{
-		DecisionTrees tree = new DecisionTrees();
-		tree.depth = 6;												// getting depth
-		List<String> recordList = tree.readFile("monk1.txt");
 		
-		tree.createFeatureList(recordList, tree.dataLists);
-		tree.buildTree();											// builds decision tree on training data
-		tree.testdata_traversal("monk1test.txt");					// tests on test data
-		tree.print_decision_tree(tree.rootNode);					// prints the decision tree. Comment if not needed
+		DecisionTrees tree = new DecisionTrees();
+		tree.method = "boosting";
+		tree.depth = 10;												// getting depth
+		List<String> recordList = tree.readFile("train1.csv");
+
+		tree.populateFeatures(recordList);
+		tree.createFeatureList1(recordList, tree.dataLists);
+
+		if(tree.method.equals("bagging"))
+		{
+			tree.buildEnsembles();
+			//tree.buildTree();											// builds decision tree on training data
+			//tree.testdata_traversal("monk1test.txt");					// tests on test data
+			//tree.print_decision_tree(tree.rootNode);					// prints the decision tree. Comment if not needed
+		}
+		else
+		{
+			
+			
+			double size = tree.dataLists.get(0).size();				// total no. of samples
+			System.out.println(tree.dataLists.get(0).size());
+			System.out.println(1/size + "&&&&");
+			for(int i=0; i< tree.dataLists.get(0).size(); i++)
+			{
+				tree.weightList.add((double) (1/(size)));				// adding initial weight in the form of list
+			}
+			tree.learnBoosting((ArrayList<ArrayList<Integer>>) tree.dataLists);
+			
+			//System.out.println(tree.weightList.toString());
+			
+		}
+
+		tree.dataLists.clear();
+		tree.testDataLists.clear();
+		tree.featureQueue.clear();
+
 	}
-	/* Function to construct tree */
-	public void buildTree()
+
+	private void learnBoosting(ArrayList<ArrayList<Integer>> boostingDataLists) 
 	{
-		entropyUtility.calculatePriorEntropy(dataLists);		// Function to calculate prior entropy
-		decideRootNode();										// Function to decide the root feature
+		buildTree(boostingDataLists);
+		
+	}
+
+	private void populateFeatures(List<String> recordList) 
+	{
+		int featureNo = recordList.get(0).trim().split(",").length;   // getting first line of dataset for features
+
+		System.out.println(featureNo);
+		for(int i=0; i< featureNo-1; i++ )			 // not considering feature bruises?-no in the feature queue
+		{
+			featureQueue.add(i);
+		}
+
+		System.out.println("Look here " + featureQueue.size());
+
+	}
+
+	public void buildEnsembles()
+	{
+		// creating 2 bags and setting bound as 60% of the total size
+		int n = 3; Random random = new Random(); int bound = (int) (dataLists.get(0).size() * 0.75);
+		System.out.println("*******"+bound);
+		List<ArrayList<ArrayList<Integer>>> ensembleList = new ArrayList<ArrayList<ArrayList<Integer>>>();
+		while(ensembleList.size() < n)
+		{
+			ArrayList<ArrayList<Integer>> ensemble = new ArrayList<ArrayList<Integer>>();
+			for(int i=0; i< dataLists.size(); i++)								
+			{
+				ensemble.add(new ArrayList<Integer>());
+			}
+
+			while(ensemble.get(0).size() < bound)		// getting the newly added ensemble from the ensemble list
+			{
+				int dataPoint = random.nextInt(bound);							// since bound is not inclusive
+				//System.out.println(dataPoint + " ensemble no. " + ensembleList.size());
+				//System.out.println("picked " +dataPoint);
+				//ArrayList<ArrayList<Integer>> addedEnsemble = ensembleList.get(ensembleList.size() - 1);
+				for(int i =0; i< dataLists.size(); i++)
+				{
+					ensemble.get(i).add(dataLists.get(i).get(dataPoint));
+
+				}
+				//System.out.println("");
+
+			}
+			ensembleList.add(ensemble);
+			System.out.println("Ended filling the ensemble");
+		}
+		int i=1;
+		for(ArrayList<ArrayList<Integer>> ensemble : ensembleList)
+		{
+			System.out.println("for ensemble "+ i);
+			buildTree(ensemble);
+			testdata_traversal("test1.csv");
+			i++;
+			//print_decision_tree(rootNode);
+
+		}
+
+		/*for(ArrayList<ArrayList<Integer>> ensemble : ensembleList)
+		{
+			printUtilityFunction(ensemble);
+			System.out.println("############### FINISHED ONE ################");
+			System.out.println(ensemble.get(0).size());
+			System.out.println(ensemble.size());
+		}*/
+	}
+
+
+	/* Function to construct tree */
+	public void buildTree(ArrayList<ArrayList<Integer>> dataLists)
+	{
+		if(method.equals("bagging")){entropyUtility.calculatePriorEntropy(dataLists);} // Function to calculate prior entropy for bagging
+		
+		else {entropyUtility.boostingCalcPrioEntropy(dataLists, weightList);}
+				
+		/*decideRootNode(dataLists);										// Function to decide the root feature
 		Queue<Node> rootChildNodes = new LinkedList<>();
 		rootChildNodes.addAll(rootNode.childNodes);
-		/* Builds the tree in BFS manner */
+		// Builds the tree in BFS manner 
 		while(!rootChildNodes.isEmpty() && rootChildNodes.peek().depth<= depth)  
 		{
 			Node nodeChild = rootChildNodes.poll();
+
+			//System.out.println("Node in question "+ nodeChild.featureName + " child of " + nodeChild.parent.featureName);
+
 			splitDataSet(nodeChild.parent.nodeDataset, nodeChild.parent.featureName, nodeChild);		// splits the dataset
+
+			//printUtilityFunction(nodeChild.nodeDataset);
 			Map<Integer, Map<Integer, double[]>> emptyFeatureAttrCountMap = getFeatureValues(featureQueue, nodeChild.nodeDataset);  // function to get all unique feature values
+
+			//System.out.println("&&&& check here &&&&");
+			//printUtilityForFeatureAttrMap(emptyFeatureAttrCountMap);
+
+
 			Map<Integer, Map<Integer, double[]>> filledFeatureAttrCountMap = calculateBestFeature(nodeChild.nodeDataset, emptyFeatureAttrCountMap); // gets the count of the above values
+
+
+			//printUtilityForFeatureAttrMap(filledFeatureAttrCountMap);
+
 			entropyUtility.calculateTotalEntropy(filledFeatureAttrCountMap, nodeChild.nodeDataset.get(0).size());    // calculates entropy for all features
 			if(entropyUtility.entropyMap.values().stream().mapToDouble(Double::doubleValue).sum() == 0)
 			{
+				System.out.println("###### leaf found at "+nodeChild.featureName +  " of featureParent "+ nodeChild.parent.featureName );
 				nodeChild.leaf = true;
 				nodeChild.nodeEntropy = 0;
 				nodeChild.childNodes = null;
@@ -130,11 +257,15 @@ public class DecisionTrees
 			entropyUtility.calculateInfoGain(nodeChild.parent.nodeEntropy); 					// calculates info gain for all features
 			double[] array = entropyUtility.returnHighestInfoGain();							// returns feature with highest info gain and corresponding entropy
 			int rootFeature = (int) array[1];
+
 			entropyUtility.infoMap.clear();
 			entropyUtility.entropyMap.clear();
 			Node feature = new Node(rootFeature);  
 			feature.parent = nodeChild;
 			feature.setEntropy(array[0]);
+
+			System.out.println("^^^^^^^ splitting at "+rootFeature + " of attribute " + nodeChild.featureName + " of featureParent "+ nodeChild.parent.featureName + " with entropy "+ feature.nodeEntropy );
+
 			feature.depth = nodeChild.depth+1;
 			feature.feature = true;
 			feature.nodeDataset = feature.parent.nodeDataset;
@@ -149,7 +280,7 @@ public class DecisionTrees
 				childNode.setDepth(childNode.parent.depth);   // setting children depth
 				rootChildNodes.add(childNode);				  // filling up the while Queue	
 			}
-		} 
+		} */
 	}
 	/**
 	 * Function to split the dataset according the attribute of the parent feature
@@ -162,7 +293,7 @@ public class DecisionTrees
 	{
 		List<ArrayList<Integer>> newdataLists = new ArrayList<ArrayList<Integer>>();    // declaring new dataset to be set for given node
 		ArrayList<Integer> featureListToSplitBy = dataLists2.get(featureIndexToSplitBy); 	// takes feature list (highest info gain feature) from original dataset
-		for(int i=0; i< featureQueue.size()+1; i++)				  						// + 1 since we are considering features + class label list				
+		for(int i=0; i< featureQueue.size(); i++)				  						// + 1 since we are considering features + class label list				
 		{
 			newdataLists.add(new ArrayList<Integer>());									// adding arraylists depending on feature count (one less)
 		}
@@ -177,18 +308,30 @@ public class DecisionTrees
 			}
 		}
 		nodeChild.setDataset(newdataLists);
+		//printUtilityFunction(newdataLists);
+		//System.out.println(newdataLists.size() + " for "+ nodeChild.featureName);
 	}
 	/*
 	 * Function that decides the rootNode
 	 * */
-	public void decideRootNode() 
+	public void decideRootNode(ArrayList<ArrayList<Integer>> dataLists) 
 	{
 		Map<Integer, Map<Integer, double[]>> emptyFeatureAttrCountMap = getFeatureValues(featureQueue, dataLists);
+		// printing empty feature map
+		System.out.println(featureQueue.toString());
+		//printUtilityForFeatureAttrMap(emptyFeatureAttrCountMap);
+
 		Map<Integer, Map<Integer, double[]>> filledFeatureAttrCountMap = calculateBestFeature(dataLists, emptyFeatureAttrCountMap);
+
+		//printUtilityForFeatureAttrMap(filledFeatureAttrCountMap);
+
 		entropyUtility.calculateTotalEntropy(filledFeatureAttrCountMap, dataLists.get(0).size());
 		entropyUtility.calculateInfoGain(entropyUtility.priorEntropy);
 		double[] array = entropyUtility.returnHighestInfoGain();
 		int rootFeature = (int) array[1];
+
+		System.out.println( "Root feature is "+  rootFeature);
+
 		entropyUtility.infoMap.clear();
 		entropyUtility.entropyMap.clear();
 		rootNode = new Node(rootFeature);       // setting root
@@ -200,6 +343,7 @@ public class DecisionTrees
 		//System.out.println("Unique values are "+ filledFeatureAttrCountMap.get(rootNode.featureName).keySet().toString());
 		for(int childNode : filledFeatureAttrCountMap.get(rootNode.featureName).keySet())    // adding feature unique children (attributes)
 		{
+			System.out.println("rootchildren are " + childNode);
 			rootNode.childNodes.add(new Node(childNode));   // setting children
 		}
 		for(Node childNode : rootNode.childNodes)
@@ -231,7 +375,8 @@ public class DecisionTrees
 			ArrayList<Integer> featureColumn = dataLists2.get(columnIndex);
 			for(int i=0; i< featureColumn.size(); i++)
 			{
-				if(dataLists2.get(0).get(i)== 1)
+				//System.out.println(dataLists2.get(dataLists2.size() -1).get(i)+ "*****");
+				if(dataLists2.get(dataLists2.size() -1).get(i)== 1)
 				{
 					Map<Integer, double[]> attrCountMap = featureAttrCountMap.get(columnIndex);
 					double[] array = attrCountMap.get(featureColumn.get(i));
@@ -257,12 +402,13 @@ public class DecisionTrees
 	public Map<Integer, Map<Integer, double[]>> getFeatureValues(List<Integer> featureQueue2, List<ArrayList<Integer>> dataLists2)
 	{
 		Map<Integer, Map<Integer, double[]>> featureAttrCountMap = new LinkedHashMap<>();
-		for(Integer columnIndex : featureQueue2)
+		//for(Integer columnIndex : featureQueue2)
+		for(int i=0; i< featureQueue2.size()-1; i++)
 		{
 			Map<Integer, double[]> attrCountMap = new LinkedHashMap<>();
-			Set<Integer> uniqueSet = dataLists2.get(columnIndex).stream().collect(Collectors.toSet());
+			Set<Integer> uniqueSet = dataLists2.get(featureQueue2.get(i)).stream().collect(Collectors.toSet());
 			for(Integer featureAttrs : uniqueSet){attrCountMap.put(featureAttrs,new double[]{0,0});}
-			featureAttrCountMap.put(columnIndex, attrCountMap);
+			featureAttrCountMap.put(featureQueue2.get(i), attrCountMap);
 		}
 		return featureAttrCountMap;
 	}
@@ -275,9 +421,10 @@ public class DecisionTrees
 		for(int i=0; i< dataLists2.get(0).size(); i++)
 		{
 			System.out.println("");
+			System.out.print(i);
 			for(int j=0; j< dataLists2.size(); j++ )
 			{
-				System.out.print(dataLists2.get(j).get(i)+ " ");
+				System.out.print(" "+dataLists2.get(j).get(i)+ " ");
 			}
 		}
 		System.out.println("");
@@ -321,52 +468,82 @@ public class DecisionTrees
 		} catch (IOException e) { 
 			e.printStackTrace();
 		}
+		//System.out.println(recordList.toString());
 		return recordList;
 	}
+
+	/**
+	 * Testing 
+	 * **/
+
+	public void createFeatureList1(List<String> recordList, List<ArrayList<Integer>> parsedDataList)			// made changes here since only 21 attributes required
+	{
+		int featureNo = recordList.get(0).trim().split(",").length;   // getting first line of dataset for features
+
+
+		for(int i=0; i< featureNo; i++)				// adding all features and then will remove feature bruises?-no 	
+		{
+			parsedDataList.add(new ArrayList<Integer>());
+		}
+		for(int j=1; j< recordList.size(); j++)
+		{
+			String [] parseRecord = recordList.get(j).trim().split(",");
+			for(int i=0; i< featureNo; i++)
+			{
+
+				parsedDataList.get(i).add(Integer.valueOf(parseRecord[i]));  
+			}
+		}
+
+		parsedDataList.remove(21);
+		ArrayList<Integer> classLabelColumn = parsedDataList.get(20); parsedDataList.remove(20);
+		parsedDataList.add(classLabelColumn);
+		System.out.println(parsedDataList.size());
+		//printUtilityFunction(parsedDataList);
+	}
+
+
 	/*
 	 * Function to decide the no. of features
 	 * */
-	public void createFeatureList(List<String> recordList, List<ArrayList<Integer>> dataLists2)
+	/*public void createFeatureList(List<String> recordList, List<ArrayList<Integer>> parsedDataList)			// made changes here since only 21 attributes required
 	{
-		int featureNo = recordList.get(0).trim().split("\\s+").length;   // getting first line of dataset for features
-		for(int i=1; i< featureNo-1; i++ )
+		int featureNo = recordList.get(0).trim().split(",").length;   // getting first line of dataset for features
+
+//		String[] features = recordList.get(0).trim().split(",");
+//		for(String feature : features)
+//		{
+//			System.out.println(feature);
+//		}
+
+		System.out.println(featureNo);
+		for(int i=0; i< featureNo; i++ )
 		{
 			featureQueue.add(i);
 		}
-		for(int i=0; i< featureNo-1; i++)								
-		{
-			dataLists2.add(new ArrayList<Integer>());
-		}
-		for(String record : recordList)
-		{
-			String [] parseRecord = record.trim().split("\\s+");
-			for(int i=0; i< parseRecord.length-1; i++)
-			{
-				dataLists2.get(i).add(Integer.valueOf(parseRecord[i]));  
-			}
-		}
-	}
-	/*For my own dataset*/
-	public void create_featurelist_owndataset(List<String> own_dataset_recordList, List<ArrayList<Integer>> dataLists2)
-	{
-		int featureNo = own_dataset_recordList.get(0).trim().split(",").length;
-		for(int i=1; i< featureNo; i++ )
-		{
-			featureQueue.add(i);
-		}
+
+//		for(Integer feature : featureQueue)
+//		{
+//			System.out.println(feature);
+//		}
+
 		for(int i=0; i< featureNo; i++)								
 		{
-			dataLists2.add(new ArrayList<Integer>());
+			parsedDataList.add(new ArrayList<Integer>());
 		}
-		for(String record : own_dataset_recordList)
+		for(int j=1; j< recordList.size(); j++)
 		{
-			String [] parseRecord = record.trim().split(",");
-			for(int i=0; i< parseRecord.length; i++)
+			String [] parseRecord = recordList.get(j).trim().split(",");
+			for(int i=0; i< featureNo; i++)
 			{
-				dataLists2.get(i).add(Integer.valueOf(parseRecord[i]));  
+				parsedDataList.get(i).add(Integer.valueOf(parseRecord[i]));  
 			}
 		}
-	}
+
+		//printUtilityFunction(parsedDataList);
+	}*/
+
+
 	/**######################################################
 	 * ###### File read on training set and feature creation functions #######
 	 * ######################################################
@@ -379,12 +556,9 @@ public class DecisionTrees
 	{
 		List<String> recordList = readFile(test_data_filename); 
 		List<Integer> resultList = new ArrayList<>();
-		if(test_data_filename.equals("owndataset_test.txt"))
-		{
-			create_featurelist_owndataset(recordList, testDataLists);
-		}
-		else
-			createFeatureList(recordList, testDataLists);
+
+		createFeatureList1(recordList, testDataLists);
+
 		for(int i=0; i< testDataLists.get(0).size(); i++ )
 		{
 			int class_label_0_count =0; boolean didNotFindMatch = false;
@@ -414,7 +588,7 @@ public class DecisionTrees
 				else {break;}
 			}
 			Node deciding_node = next_attr;							// deciding attr node
-			for(Integer j : deciding_node.nodeDataset.get(0))
+			for(Integer j : deciding_node.nodeDataset.get(deciding_node.nodeDataset.size()-1))		// make changes in the index // getting class labels
 			{
 				if(j == 0 )
 				{
@@ -437,16 +611,16 @@ public class DecisionTrees
 		double right =0; double wrong =0; 
 		for(int i=0; i< testDataLists.get(0).size(); i++)
 		{
-			if(testDataLists.get(0).get(i) == resultList.get(i))
+			if(testDataLists.get(testDataLists.size() -1).get(i) == resultList.get(i))		// make changes in the index and below as well
 			{
-				if(testDataLists.get(0).get(i) ==0){ confusion_matrix.put("actual 0 predicted 0", confusion_matrix.get("actual 0 predicted 0")+1 ); }
-				else if (testDataLists.get(0).get(i) ==1) { confusion_matrix.put("actual 1 predicted 1", confusion_matrix.get("actual 1 predicted 1")+1 ); }
+				if(testDataLists.get(testDataLists.size() -1).get(i) ==0){ confusion_matrix.put("actual 0 predicted 0", confusion_matrix.get("actual 0 predicted 0")+1 ); }
+				else if (testDataLists.get(testDataLists.size() -1).get(i) ==1) { confusion_matrix.put("actual 1 predicted 1", confusion_matrix.get("actual 1 predicted 1")+1 ); }
 				right++;
 			}
 			else 
 			{
-				if(testDataLists.get(0).get(i) ==0 && resultList.get(i)==1) { confusion_matrix.put("actual 0 predicted 1", confusion_matrix.get("actual 0 predicted 1")+1 ); }
-				else if(testDataLists.get(0).get(i) ==1 && resultList.get(i)==0) { confusion_matrix.put("actual 1 predicted 0", confusion_matrix.get("actual 1 predicted 0")+1 ); }
+				if(testDataLists.get(testDataLists.size() -1).get(i) ==0 && resultList.get(i)==1) { confusion_matrix.put("actual 0 predicted 1", confusion_matrix.get("actual 0 predicted 1")+1 ); }
+				else if(testDataLists.get(testDataLists.size() -1).get(i) ==1 && resultList.get(i)==0) { confusion_matrix.put("actual 1 predicted 0", confusion_matrix.get("actual 1 predicted 0")+1 ); }
 				wrong ++;
 			}
 		}
@@ -455,6 +629,11 @@ public class DecisionTrees
 		//System.out.println("FALSE POSITIVE RATE "+ confusion_matrix.get("actual 0 predicted 1") / (confusion_matrix.get("actual 0 predicted 0") + confusion_matrix.get("actual 0 predicted 1"))   );
 		//System.out.println("FALSE NEGATIVE RATE "+ confusion_matrix.get("actual 1 predicted 0") / (confusion_matrix.get("actual 1 predicted 0") + confusion_matrix.get("actual 1 predicted 1"))   );
 		System.out.println("ACCURACY IS "+ right/(right + wrong));
+		testDataLists.clear();    // clearing test data lists
+
+
+		resultLists.add((ArrayList<Integer>) resultList);			// adding in the aggregated result lists
+
 		/**
 		 *  TESTING ACCURACY
 		 * **/
